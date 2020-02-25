@@ -1,2 +1,2 @@
 # Git-Attribute-Filter-Keywords
-CVS style keyword substitution for files in Git repositories
+RSC/CVS style keyword substitution for files in Git repositories
