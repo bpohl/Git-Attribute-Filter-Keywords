@@ -1,6 +1,6 @@
 #!/bin/bash
-# $Id$
-# $Revision$
+# $Id:        Can't use these keywords without messing$
+# $Revision:    up the regexs in the script itself    $
 #
 # Translate keywords from sensable versioning systems using filters.
 #   The bash handles the parallel stream for diff debug output.  The
@@ -53,7 +53,7 @@ exit 0
 #!/usr/bin/perl -p
 use strict;
 use warnings;
-#use Data::Dumper;
+use Data::Dumper;
 
 # Fill some variables whos value doesn't change over the whole
 #   file being processed
@@ -61,18 +61,15 @@ our %attribs;
 our @obsolete;
 BEGIN{
 
-    %attribs = ( cmd      => shift,
-                 branch   => qx/git rev-parse --abbrev-ref HEAD/,
+    %attribs = ( branch   => qx/git rev-parse --abbrev-ref HEAD/,
                  cmtdate  => qx/git log --pretty=format:"%ad" -1/,
-                 describe => qx/git describe --all/,
-                 symref   => qx/git symbolic-ref --short HEAD/,
-                 brcurr   => [ qx/git show-branch --current/ ],
-                 branch2  => [ qx/git branch/ ]                    );
+                 #describe => qx/git describe --all/,
+                 cmd      => shift                                 );
     $attribs{'revstring'} = sprintf( "%s on branch %s",
                                      $attribs{'cmtdate'},
                                      $attribs{'branch'}   );
     %attribs = map {chomp $attribs{$_}; ($_ => $attribs{$_});} keys(%attribs);
-    #warn Dumper \%attribs;
+    warn Dumper \%attribs;
 
     # List obsolete keywords to be removed entirerly
     @obsolete = map { qr(\$$_:?.*?\$) } qw( Locker 
@@ -91,14 +88,14 @@ if(lc($attribs{'cmd'}) eq "smudge"){
     }
 
     # If not a SHA1 then change $Id$ into $Revision$
-    s/\$Id(:?\s+\b(?![[:xdigit:]]{40}).{1,40}.*?)?\$/\$Revision$/gi;
+    s/\$Id(:?\s+\b(?![[:xdigit:]]{40}).{1,40}.*?)?\$/\$Revision\$/gi;
         
     # Fill in new Git filter keywords
-    s/\$Date:?.*?\$/\$Date: $attribs{'cmtdate'}\$/ig;
-    s/\$Revision$/\$Revision$attribs{'revstring'}\$/gi;
+    s/\$Date:?.*?\$/\$Date: $attribs{'cmtdate'}\$/gi;
+    s/\$Revision:?.*?\$/\$Revision: $attribs{'revstring'}\$/gi;
 
 }else{
-    s/\$Revision$/\$Revision$/gi;
+    s/\$Revision:?.*?\$/\$Revision\$/gi;
 }
 
 
