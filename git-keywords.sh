@@ -44,60 +44,135 @@ fi
 #   perl STDOUT to the after diff
 tee "$GIT_KEYWORD_BEFORE_PIPE" | perl -x "$0" "$1" \
                                            | tee "$GIT_KEYWORD_AFTER_PIPE"
-
 exit 0
 
+
+
+##########################################
 ##
 ## Use perl to do the in-line processing
 ##
-#!/usr/bin/perl -p
+#!/usr/bin/perl
 use strict;
 use warnings;
 use Data::Dumper;
 
-# Fill some variables whos value doesn't change over the whole
-#   file being processed
-our %attribs;
-our @obsolete;
-BEGIN{
 
-    %attribs = ( branch   => qx/git rev-parse --abbrev-ref HEAD/,
-                 cmtdate  => qx/git log --pretty=format:"%ad" -1/,
-                 #describe => qx/git describe --all/,
-                 cmd      => shift                                 );
-    $attribs{'revstring'} = sprintf( "%s on branch %s",
-                                     $attribs{'cmtdate'},
-                                     $attribs{'branch'}   );
-    %attribs = map {chomp $attribs{$_}; ($_ => $attribs{$_});} keys(%attribs);
-    warn Dumper \%attribs;
+######################
+## Configuration Constants
 
-    # List obsolete keywords to be removed entirerly
-    @obsolete = map { qr(\$$_:?.*?\$) } qw( Locker 
-                                            RCSfile 
-                                            Source 
-                                            State   ); 
+# Turn on Debug output and suppress normal output
+use constant DEBUG       => 01;
+
+# Map of keywords that corisponds to formatted output from 'git log'
+use constant GIT_LOG_MAP => { Author       => "%an",
+                              CommitAuthor => "%cn",
+                              CommitEmail  => "%ce",
+                              CommitDate   => "%cd",
+                              Date         => "%ad",
+                              Email        => "%ae",
+                              CommitNote   => "%s"   };
+
+# List of keywords to be removed entirely
+use constant OBSOLETE_LIST => qw( Locker 
+                                  RCSfile 
+                                  Source 
+                                  State   ); 
+
+
+######################
+## Functions to do additional data lookups
+
+# Function that goes a long way to get the branch that the committed
+#   blob belongs to
+sub getbranch {
+    my $getbranch_script = "BLOBID='$_[0]'\n" . <<'GETBRANCH_SCRIPT';
+        git name-rev --name-only $(git log --pretty=format:'%T %H' \
+                                    | while IFS=' ' read tree commit; do 
+          (git ls-tree -r $tree | grep -q $BLOBID) && echo $commit
+        done)
+GETBRANCH_SCRIPT
+    return qx/$getbranch_script/;
 }
 
+
+######################
+## Read and verify the entire blob
+
+# Save off the mode command (smudge|clean)
+my $cmd = lc(shift);       
+
+# Slurp the whole file into a string variable
+$_ = do{local $/; <>;};
+
+# Find the file blob's SHA1 Id
+my ($blobid) = m/\$Id:?\s*([[:xdigit:]]{40})\s*\$/i;
+unless($blobid){
+    warn "Id not found";
+}
+
+
+######################
+## Construct a hash of keywords and their values
+
+# Start the hash
+my %attribs = ( Describe => qx/git describe --all/,
+                Id       => $blobid                 );
+
+# Assemble the 'git log' call and map the results to hash keys
+my $git_log_cmd = sprintf('git log --pretty=format:"%s" -1',
+                          join('%n',
+                               map(&GIT_LOG_MAP->{$_},
+                                   my @logmap = keys( %{&GIT_LOG_MAP} ))));
+@attribs{ @logmap } = split("\n", qx/$git_log_cmd/);
+
+# Set additional keyword values
+$attribs{'Branch'}   = getbranch($blobid);
+$attribs{'Revision'} = sprintf( "%s on branch %s",
+                                $attribs{'Date'},
+                                $attribs{'Branch'}   );
+
+# Clean uf the ends of everything in the hash
+%attribs = map {chomp; $_;} %attribs;
+
+# Debug output
+&DEBUG && warn Dumper \%attribs;
+
+
+######################
+## Apply the regexs to the data
+
 # Do smudge if asked, otherwise do the clean action
-if(lc($attribs{'cmd'}) eq "smudge"){
+if($cmd eq "smudge"){
    
     # Remove now meaningless keywords
-    foreach my $regex ( @obsolete ){
-        s/^\#\s*?$regex\s*\n$//gi;
-        s/$regex\s*?(\b|$)//gi;
+    foreach my $regex ( map { qr(\$$_:?.*?\$) } &OBSOLETE_LIST ){
+        s/^\#\s*?$regex\s*\n$//gim;
+        s/$regex\s*?(\b|$)//gim;
     }
 
     # If not a SHA1 then change $Id$ into $Revision$
-    s/\$Id(:?\s+\b(?![[:xdigit:]]{40}).{1,40}.*?)?\$/\$Revision\$/gi;
+    #s/\$Id(:?\s+\b(?![[:xdigit:]]{40}).{1,40}.*?)?\$/\$Revision\$/gim;
         
-    # Fill in new Git filter keywords
-    s/\$Date:?.*?\$/\$Date: $attribs{'cmtdate'}\$/gi;
-    s/\$Revision:?.*?\$/\$Revision: $attribs{'revstring'}\$/gi;
 
+    # Fill in new Git filter keywords
+    foreach my $keyword ( keys(%attribs) ){
+        &DEBUG && warn "s/\$$keyword\$/\$$keyword: $attribs{$keyword}\$/;\n";
+        s/\$$keyword:?.*?\$/\$$keyword: $attribs{$keyword}\$/gim;
+    }
+    
 }else{
-    s/\$Revision:?.*?\$/\$Revision\$/gi;
+
+    # Clear all the keywords
+    foreach my $keyword ( keys(%attribs) ){
+        &DEBUG && warn "s/\$$keyword:?.*?\$/\$$keyword\$/;\n";
+        s/\$$keyword:?.*?\$/\$$keyword\$/gim;
+    }
 }
 
+# Print the results
+print;
+exit 0;
 
 =pod
 
@@ -115,7 +190,7 @@ The login name of the user who checked in the revision.
 =item $Date$
     The date and time (UTC) the revision was checked in.
 
-=item $Header$
+=item $Header$  B<Not Enabled>
 
 A standard header containing the full pathname of the RCS file, the
 revision number, the date (UTC), the author, the state, and the locker
@@ -125,12 +200,12 @@ revision number, the date (UTC), the author, the state, and the locker
 
 Same as $Header$, except that the RCS filename is without a path.
 
-=item $Locker$
+=item $Locker$  B<Obsolete: Automaticaly Removed>
 
 The login name of the user who locked the revision (empty if not
 locked, and thus almost always useless when you are using CVS).
 
-=item $Log$
+=item $Log$  B<Not Enabled>
 
 The log message supplied during commit, preceded by a header
 containing the RCS filename, the revision number, the author, and the
@@ -142,7 +217,7 @@ options. This keyword is useful for accumulating a complete change log
 in a source file, but for several reasons it can be problematic. See
 section Problems with the $Log$ keyword..
 
-=item $RCSfile$
+=item $RCSfile$  B<Obsolete: Automaticaly Removed>
 
 The name of the RCS file without a path.
 
@@ -150,14 +225,34 @@ The name of the RCS file without a path.
 
 The revision number assigned to the revision.
 
-=item $Source$
+=item $Source$  B<Obsolete: Automaticaly Removed>
 
 The full pathname of the RCS file.
 
-=item $State$
+=item $State$  B<Obsolete: Automaticaly Removed>
 
 The state assigned to the revision. States can be assigned with cvs
 admin -s---See section admin options.
+
+=back
+
+=head4 Additional Keywords
+
+=over
+
+=item $Branch$
+
+=item $CommitAuthor$
+
+=item $CommitDate$
+
+=item $CommitEmail$
+
+=item $Describe$
+
+=item $Email$
+
+=item $CommitNote$
 
 =back
 

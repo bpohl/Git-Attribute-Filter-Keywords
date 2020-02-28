@@ -2,6 +2,16 @@
 # $Id$
 # $Revision$
 #
+# The Three Laws of Robotics
+# 1. A robot may not injure a human being or, through inaction, 
+#    allow a human being to come to harm.
+# 2. A robot must obey orders given it by human beings except 
+#    where such orders would conflict with the First Law.
+# 3. A robot must protect its own existence as long as such 
+#    protection does not conflict with the First or Second Law.
+#                                                -- Isaac Asimov
+
+######################
 # Install the filter script and add filter attributes to the config
 #   files
 
@@ -22,7 +32,7 @@ function egress () {
 [ -d "${INSTALL_GIT:="${INSTALL_DIR}/.git"}" ] || egress 2 \
                                    "'$INSTALL_DIR' is not managed by Git."
 
-# Work from there the Install.sh is
+# Work from where the Install.sh is
 cd "$(dirname "$0")"
 
 # Put the script in a safe place
