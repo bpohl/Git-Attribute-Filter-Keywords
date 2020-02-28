@@ -1,14 +1,14 @@
 # Test file  
 
-# $Locker: locker$ locker
-# rcsfile $RCSfile: rcsfile$
-# $Source: /source/file$
-# $State: Texas$
-
 $Id$
-$Id: 10101$
-$Id: 0123456789abcdef0123456789abcdef01234567$
+$Revision$
 
-$Date: A Long Time Ago...$
-
-$Revision: $
+$Describe$
+$Email$
+$Author$
+$CommitNote$
+$CommitAuthor$
+$CommitEmail$
+$Date$
+$Branch$
+$CommitDate$
