@@ -13,6 +13,6 @@
 # $Branch$
 # $CommitDate$
 
-## This $Source$ should have changed to $Revision$
+## This 'Source' should have changed to 'Revision'
 # $Source$
 
