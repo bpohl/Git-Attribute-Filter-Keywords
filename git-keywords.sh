@@ -31,7 +31,7 @@ if [ "$1" == "-d" ]; then
     [ -p "$GIT_KEYWORD_AFTER_PIPE" ] || mkfifo "$GIT_KEYWORD_AFTER_PIPE"
     echo "### $@ $(pwd) $(date)" >> "$GIT_KEYWORD_DIFF"
     diff "$GIT_KEYWORD_BEFORE_PIPE" "$GIT_KEYWORD_AFTER_PIPE" \
-                                                 >> "$GIT_KEYWORD_DIFF" &
+                                                >> "$GIT_KEYWORD_DIFF" &
   }
   # Start the b2a diff process
   dodiff "$@"
@@ -80,38 +80,74 @@ use constant OBSOLETE_LIST => qw( Locker
                                   Source 
                                   State   ); 
 
+# An abbriviation of the SHA1 regex
+use constant SHA1 => qr/[[:xdigit:]]{40}/i;
+
 
 ######################
 ## Functions to do additional data lookups
 
 # Function that goes a long way to get the branches that the committed
 #   blob belongs to
-sub getbranch {
+sub getcommit {
+    my ($blobid) = @_;
+
+    # Loop over all the log entries
+    foreach( qx{git log --all --pretty=format:'%H %T'} ){
+        my ( $commit, $tree ) = ( m/^(${\(SHA1)})\s   # commit
+                                     (${\(SHA1)})\s   # tree   /x );
+        &DEBUG && warn "\$blobid = $blobid\n" .
+                       "\$commit = $commit\n" .
+                       "\$tree   = $tree\n";
+
+        # Search in each tree for the file with $blobid
+        &DEBUG && warn Data::Dumper->Dump([[ qx{git ls-tree -r $tree} ]],
+                                          ['tree']                        );
+        if( grep( m/^\d+?\sblob\s$blobid\s(.+?)\s*$/i,
+                  qx{git ls-tree -r $tree}             ) ){
+
+            # Look up the name of the commit containing the file
+            my @branches = qx{git name-rev --always --name-only $commit};
+            &DEBUG && warn Data::Dumper->Dump([@branches],['branches']);
+
+            # Once we have a name the job is done so stopp here
+            return wantarray ? @branches : $branches[0];     
+        }
+    }
+
+    # If we make it here then the file wasn't found and theres nothing
+    #   to do about it
+    return wantarray ? ('unknown') : 'unknown';
+}
+
+# Construct a hash of keywords and their values
+sub getattribs {
     my ($blobid, $filename) = @_;
-    my $getbranch_script = <<'GETBRANCH_SCRIPT';
-        git log --pretty=format:'%T %H' | \
-          while IFS=' ' read tree commit; do 
-            git ls-tree -r $tree | awk '{print $0, "'$commit'"}'
-          done | sort
-GETBRANCH_SCRIPT
-                                              
-    warn Dumper [ qx/$getbranch_script/ ];
-
-#    my %filess = map { m/^\s*([[:xdigit]]{40})\s+
-#                             ([[:alpha:]]+?\s+
-#
-#  blob\s+(.+?)\s+(.+)\s+(\S+)\s*$/i;
-#                      $2, $4, $3, $4 } qx/$getbranch_script/;
-
     
-    my %files = map { m/^\s*(.+?)\s+blob\s+(.+?)\s+(.+)\s+(\S+)\s*$/i;
-                      $2, $4, $3, $4 } qx/$getbranch_script/;
-    &DEBUG && warn "\$getbranch_script = $getbranch_script\n", Dumper \%files;
+    # Start the hash
+    my %attribs = ( Describe => qx{git describe --all},
+                    Id       => $blobid||'unknown'      );
 
-    my $commit = $files{$blobid}||$files{$filename};
-    my @branches = split("\n", qx/git name-rev --name-only $commit/);
-    &DEBUG && warn "\$commit = $commit\n", Dumper \@branches;
-    return wantarray ? @branches : $branches[0];
+    # Assemble the 'git log' call and map the results to hash keys
+    my $git_log_cmd = sprintf('git log --pretty=format:"%s" -1',
+                              join('%n',
+                                   map(&GIT_LOG_MAP->{$_},
+                                       my @logmap = keys( %{&GIT_LOG_MAP} ))));
+    @attribs{ @logmap } = split("\n", qx{$git_log_cmd});
+
+    # Set additional keyword values
+    $attribs{'Filename'} = $filename||'unknown';
+    $attribs{'Branch'}   = $blobid ? getcommit($blobid) : 'unknown';
+    $attribs{'Revision'} = sprintf( "%s on branch %s",
+                                    $attribs{'Date'}||'unknown',
+                                    $attribs{'Branch'}||'unknown' );
+
+    # Clean uf the ends of everything in the hash
+    %attribs = map {chomp; $_;} %attribs;
+
+    # Send it back
+    &DEBUG && warn  Data::Dumper->Dump([\%attribs],['attribs']);
+    return \%attribs
 }
 
 
@@ -119,72 +155,49 @@ GETBRANCH_SCRIPT
 ## Read and verify the entire blob
 
 # Save off the mode command (smudge|clean) and file name
-my $cmd = lc(shift);       
-my $filename = shift;       
+#   Nothing should remain so STDIN is opened for reading
+my ($cmd, $filename) = @ARGV;       
+@ARGV = ();
 
 # Slurp the whole file into a string variable
 $_ = do{local $/; <>;};
-
-# Find the file blob's SHA1 Id
-my ($blobid) = m/\$Id:?\s*([[:xdigit:]]{40})\s*\$/i;
-unless($blobid){
-    warn "Id not found";
-}
-
-
-######################
-## Construct a hash of keywords and their values
-
-# Start the hash
-my %attribs = ( Describe => qx/git describe --all/,
-                Id       => $blobid                 );
-
-# Assemble the 'git log' call and map the results to hash keys
-my $git_log_cmd = sprintf('git log --pretty=format:"%s" -1',
-                          join('%n',
-                               map(&GIT_LOG_MAP->{$_},
-                                   my @logmap = keys( %{&GIT_LOG_MAP} ))));
-@attribs{ @logmap } = split("\n", qx/$git_log_cmd/);
-
-# Set additional keyword values
-$attribs{'Branch'}   = getbranch($blobid, $filename);
-$attribs{'Revision'} = sprintf( "%s on branch %s",
-                                $attribs{'Date'}||'unknown',
-                                $attribs{'Branch'}||'unknown' );
-
-# Clean uf the ends of everything in the hash
-%attribs = map {chomp; $_;} %attribs;
-
-# Debug output
-&DEBUG && warn Dumper \%attribs;
 
 
 ######################
 ## Apply the regexs to the data
 
 # Do smudge if asked, otherwise do the clean action
-if($cmd eq "smudge"){
-   
+if(lc($cmd) eq "smudge"){
+
+    # Find the file blob's SHA1 Id
+    my ($blobid) = m/\$Id:?\s*(${\(SHA1)})\s*\$/i;
+    warn "'\$Id\$' not found, some keywords will not be filled.\n" .
+         "Add a '\$Id\$' keyword to enable all keywords.\n"
+        unless($blobid);
+    
+    # Since I frequently used $Source$, change it to $Revision$
+    s/\$Source:?.*?\$/\$Revision\$/gim;
+
     # Remove now meaningless keywords
     foreach my $regex ( map { qr(\$$_:?.*?\$) } &OBSOLETE_LIST ){
         s/^\#\s*?$regex\s*\n$//gim;
         s/$regex\s*?(\b|$)//gim;
     }
 
-    # If not a SHA1 then change $Id$ into $Revision$
-    #s/\$Id(:?\s+\b(?![[:xdigit:]]{40}).{1,40}.*?)?\$/\$Revision\$/gim;
-        
-
+    my $attribs = getattribs($blobid, $filename);
+    
     # Fill in new Git filter keywords
-    foreach my $keyword ( keys(%attribs) ){
-        &DEBUG && warn "s/\$$keyword\$/\$$keyword: $attribs{$keyword}\$/;\n";
-        s/\$$keyword:?.*?\$/\$$keyword: $attribs{$keyword}\$/gim;
+    foreach my $keyword ( keys(%$attribs) ){
+        &DEBUG && warn "s/\$$keyword\$/\$$keyword: $attribs->{$keyword}\$/;\n";
+        s/\$$keyword:?.*?\$/\$$keyword: $attribs->{$keyword}\$/gim;
     }
     
 }else{
 
+    my $attribs = getattribs(undef, $filename);
+
     # Clear all the keywords
-    foreach my $keyword ( keys(%attribs) ){
+    foreach my $keyword ( keys(%$attribs) ){
         &DEBUG && warn "s/\$$keyword:?.*?\$/\$$keyword\$/;\n";
         s/\$$keyword:?.*?\$/\$$keyword\$/gim;
     }

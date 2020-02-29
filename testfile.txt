@@ -1,14 +1,18 @@
-# Test file  
+## Test file  
 
-$Id$
-$Revision$
+# $Id$
+# $Revision$
 
-$Describe$
-$Email$
-$Author$
-$CommitNote$
-$CommitAuthor$
-$CommitEmail$
-$Date$
-$Branch$
-$CommitDate$
+# $Describe$
+# $Email$
+# $Author$
+# $CommitNote$
+# $CommitAuthor$
+# $CommitEmail$
+# $Date$
+# $Branch$
+# $CommitDate$
+
+## This $Source$ should have changed to $Revision$
+# $Source$
+
