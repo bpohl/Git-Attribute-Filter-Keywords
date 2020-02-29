@@ -42,8 +42,9 @@ fi
 
 # Split STDIN to the before diff and the perl processor, and split the
 #   perl STDOUT to the after diff
-tee "$GIT_KEYWORD_BEFORE_PIPE" | perl -x "$0" "$1" \
-                                           | tee "$GIT_KEYWORD_AFTER_PIPE"
+tee "$GIT_KEYWORD_BEFORE_PIPE" | perl -x "$0" "$1" "$2" \
+                                        | tee "$GIT_KEYWORD_AFTER_PIPE"
+
 exit 0
 
 
@@ -83,24 +84,43 @@ use constant OBSOLETE_LIST => qw( Locker
 ######################
 ## Functions to do additional data lookups
 
-# Function that goes a long way to get the branch that the committed
+# Function that goes a long way to get the branches that the committed
 #   blob belongs to
 sub getbranch {
-    my $getbranch_script = "BLOBID='$_[0]'\n" . <<'GETBRANCH_SCRIPT';
-        git name-rev --name-only $(git log --pretty=format:'%T %H' \
-                                    | while IFS=' ' read tree commit; do 
-          (git ls-tree -r $tree | grep -q $BLOBID) && echo $commit
-        done)
+    my ($blobid, $filename) = @_;
+    my $getbranch_script = <<'GETBRANCH_SCRIPT';
+        git log --pretty=format:'%T %H' | \
+          while IFS=' ' read tree commit; do 
+            git ls-tree -r $tree | awk '{print $0, "'$commit'"}'
+          done | sort
 GETBRANCH_SCRIPT
-    return qx/$getbranch_script/;
+                                              
+    warn Dumper [ qx/$getbranch_script/ ];
+
+#    my %filess = map { m/^\s*([[:xdigit]]{40})\s+
+#                             ([[:alpha:]]+?\s+
+#
+#  blob\s+(.+?)\s+(.+)\s+(\S+)\s*$/i;
+#                      $2, $4, $3, $4 } qx/$getbranch_script/;
+
+    
+    my %files = map { m/^\s*(.+?)\s+blob\s+(.+?)\s+(.+)\s+(\S+)\s*$/i;
+                      $2, $4, $3, $4 } qx/$getbranch_script/;
+    &DEBUG && warn "\$getbranch_script = $getbranch_script\n", Dumper \%files;
+
+    my $commit = $files{$blobid}||$files{$filename};
+    my @branches = split("\n", qx/git name-rev --name-only $commit/);
+    &DEBUG && warn "\$commit = $commit\n", Dumper \@branches;
+    return wantarray ? @branches : $branches[0];
 }
 
 
 ######################
 ## Read and verify the entire blob
 
-# Save off the mode command (smudge|clean)
+# Save off the mode command (smudge|clean) and file name
 my $cmd = lc(shift);       
+my $filename = shift;       
 
 # Slurp the whole file into a string variable
 $_ = do{local $/; <>;};
@@ -127,10 +147,10 @@ my $git_log_cmd = sprintf('git log --pretty=format:"%s" -1',
 @attribs{ @logmap } = split("\n", qx/$git_log_cmd/);
 
 # Set additional keyword values
-$attribs{'Branch'}   = getbranch($blobid);
+$attribs{'Branch'}   = getbranch($blobid, $filename);
 $attribs{'Revision'} = sprintf( "%s on branch %s",
-                                $attribs{'Date'},
-                                $attribs{'Branch'}   );
+                                $attribs{'Date'}||'unknown',
+                                $attribs{'Branch'}||'unknown' );
 
 # Clean uf the ends of everything in the hash
 %attribs = map {chomp; $_;} %attribs;
