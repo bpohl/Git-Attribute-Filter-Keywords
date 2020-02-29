@@ -28,9 +28,10 @@ function egress () {
 
 # Sanity checks
 [ -z "$1" ] && egress 0
-[ -z "${INSTALL_DIR:=$(cd "$1"; pwd)}" ] && egress 1
-[ -d "${INSTALL_GIT:="${INSTALL_DIR}/.git"}" ] || egress 2 \
-                                   "'$INSTALL_DIR' is not managed by Git."
+cd "${INSTALL_DIR:="$1"}" || \
+  egress 1 "Error: Destination directory '$1' not found."
+[ -z "${INSTALL_GIT:=$(git rev-parse --absolute-git-dir)}" ] && \
+  egress 2 "'$INSTALL_DIR' is not managed by Git."
 
 # Work from where the Install.sh is
 cd "$(dirname "$0")"
@@ -47,17 +48,17 @@ git config filter.keyword.clean  \
     "'.git/filters/git-keywords.sh' -d clean  %f"
     #"'$INSTALL_FILTERS/git-keywords.sh' -d clean  %f"
 
-# If there is a .gitattributes then put the pattern in there if not
-#   already there
-if [ -f "${INSTALL_DIR}/.gitattributes" ]; then
-  grep -q "filter=keyword" "${INSTALL_DIR}/.gitattributes" || \
-          echo "$ATTRIBUTE_PATTERN" >> "${INSTALL_DIR}/.gitattributes"
-  exit 0
+# Put the activation pattern in its attributes file
+if [ -f "${INSTALL_GITATTRIBUTES:="${INSTALL_GIT}/../.gitattributes"}" ]; then
+  # Look for a .gitattributes then put the pattern in there if not
+  #   already there
+  grep -q "filter=keyword" "$INSTALL_GITATTRIBUTES" || \
+          echo "$ATTRIBUTE_PATTERN" >> "$INSTALL_GITATTRIBUTES"
+else
+  # Put the pattern in .git/info/attributes if not already there
+  grep -q "filter=keyword" "${INSTALL_GIT}/info/attributes" || \
+    echo "$ATTRIBUTE_PATTERN" >> "${INSTALL_GIT}/info/attributes"
 fi
-
-# Put the pattern in .git/info/attributes if not already there
-grep -q "filter=keyword" "${INSTALL_GIT}/info/attributes" || \
-          echo "$ATTRIBUTE_PATTERN" >> "${INSTALL_GIT}/info/attributes"
 
 exit 0
 
