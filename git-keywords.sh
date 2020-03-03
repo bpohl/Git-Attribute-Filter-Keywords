@@ -2,11 +2,11 @@
 # $Id:        Can't use these keywords without messing$
 # $Revision:    up the regexs in the script itself    $
 #
-# Translate keywords from sensable versioning systems using filters.
+# Translate keywords from sensible versioning systems using filters.
 #   The bash handles the parallel stream for diff debug output.  The
 #   perl does the file editing with its regex.
 #
-# Write a file called .gitattributes in the root of the worktree cantaining
+# Write a file called .gitattributes in the root of the worktree containing
 #
 #    *  filter=keyword
 #
@@ -22,28 +22,36 @@
 : ${GIT_KEYWORD_AFTER_PIPE:="${GIT_KEYWORD_TMP}.after"}
 : ${GIT_KEYWORD_DIFF:="${GIT_KEYWORD_TMP}.diff"}
 
-# If given the -d for diff flag then set up for it
-if [ "$1" == "-d" ]; then
-  shift
-  # Set up pipes and do a before-to-after diff
-  function dodiff () {
-    [ -p "$GIT_KEYWORD_BEFORE_PIPE" ] || mkfifo "$GIT_KEYWORD_BEFORE_PIPE"
-    [ -p "$GIT_KEYWORD_AFTER_PIPE" ] || mkfifo "$GIT_KEYWORD_AFTER_PIPE"
-    echo "### $@ $(pwd) $(date)" >> "$GIT_KEYWORD_DIFF"
-    diff "$GIT_KEYWORD_BEFORE_PIPE" "$GIT_KEYWORD_AFTER_PIPE" \
-                                                >> "$GIT_KEYWORD_DIFF" &
-  }
-  # Start the b2a diff process
-  dodiff "$@"
-else
-  GIT_KEYWORD_BEFORE_PIPE=/dev/null
-  GIT_KEYWORD_AFTER_PIPE=/dev/null
-fi
+# Check for the right perl
+if perl -e "use 5.20.0"; then
 
-# Split STDIN to the before diff and the perl processor, and split the
-#   perl STDOUT to the after diff
-tee "$GIT_KEYWORD_BEFORE_PIPE" | perl -x "$0" "$1" "$2" \
+  # If given the -d for diff flag then set up for it
+  if [ "$1" == "-d" ]; then
+    shift
+    # Set up pipes and do a before-to-after diff
+    function dodiff () {
+      [ -p "$GIT_KEYWORD_BEFORE_PIPE" ] || mkfifo "$GIT_KEYWORD_BEFORE_PIPE"
+      [ -p "$GIT_KEYWORD_AFTER_PIPE" ] || mkfifo "$GIT_KEYWORD_AFTER_PIPE"
+      echo "### $@ $(pwd) $(date)" >> "$GIT_KEYWORD_DIFF"
+      diff "$GIT_KEYWORD_BEFORE_PIPE" "$GIT_KEYWORD_AFTER_PIPE" \
+                                                >> "$GIT_KEYWORD_DIFF" &
+    }
+    # Start the b2a diff process
+    dodiff "$@"
+  else
+    # Send the tee pipes to nowhere if not diffing
+    GIT_KEYWORD_BEFORE_PIPE=/dev/null
+    GIT_KEYWORD_AFTER_PIPE=/dev/null
+  fi
+
+  # Split STDIN to the before diff and the perl processor, and split the
+  #   perl STDOUT to the after diff
+  tee "$GIT_KEYWORD_BEFORE_PIPE" | perl -x "$0" "$1" "$2" \
                                         | tee "$GIT_KEYWORD_AFTER_PIPE"
+else
+  # If not perl then just pass-through
+  cat
+fi
 
 exit 0
 
@@ -54,9 +62,9 @@ exit 0
 ## Use perl to do the in-line processing
 ##
 #!/usr/bin/perl
+use 5.20.0;
 use strict;
 use warnings;
-use Data::Dumper;
 
 
 ######################
@@ -65,68 +73,81 @@ use Data::Dumper;
 # Turn on Debug output and suppress normal output
 use constant DEBUG       => 01;
 
-# Map of keywords that corisponds to formatted output from 'git log'
+# Map of keywords that corresponds to formatted output from 'git log'
 use constant GIT_LOG_MAP => { Author       => "%an",
                               CommitAuthor => "%cn",
-                              CommitEmail  => "%ce",
                               CommitDate   => "%cd",
+                              CommitEmail  => "%ce",
+                              CommitNote   => "%s" ,
                               Date         => "%ad",
-                              Email        => "%ae",
-                              CommitNote   => "%s"   };
+                              Email        => "%ae"  };
 
 # List of keywords to be removed entirely
 use constant OBSOLETE_LIST => qw( Locker 
-                                  RCSfile 
-                                  Source 
                                   State   ); 
 
-# An abbriviation of the SHA1 regex
-use constant SHA1 => qr/[[:xdigit:]]{40}/i;
+# An abbreviation of the SHA1 regex
+#   Syntax: ${\(SHA1)}
+use constant SHA1 => qr/([[:xdigit:]]{40})/i;
 
 
 ######################
-## Functions to do additional data lookups
+## Functions to do additional data look-ups
 
 # Function that goes a long way to get the branches that the committed
 #   blob belongs to
 sub getcommit {
     my ($blobid) = @_;
-
+    $blobid || return undef;
+    
     # Loop over all the log entries
     foreach( qx{git log --all --pretty=format:'%H %T'} ){
-        my ( $commit, $tree ) = ( m/^(${\(SHA1)})\s   # commit
-                                     (${\(SHA1)})\s   # tree   /x );
+        my ( $commit, $tree ) = ( m/^${\(SHA1)}\s   # commit
+                                     ${\(SHA1)}\s   # tree   /x );
         &DEBUG && warn "\$blobid = $blobid\n" .
                        "\$commit = $commit\n" .
                        "\$tree   = $tree\n";
 
         # Search in each tree for the file with $blobid
+        # Once we have a commit the job is done so stop here
         &DEBUG && warn Data::Dumper->Dump([[ qx{git ls-tree -r $tree} ]],
                                           ['tree']                        );
-        if( grep( m/^\d+?\sblob\s$blobid\s(.+?)\s*$/i,
-                  qx{git ls-tree -r $tree}             ) ){
-
-            # Look up the name of the commit containing the file
-            my @branches = qx{git name-rev --always --name-only $commit};
-            &DEBUG && warn Data::Dumper->Dump([@branches],['branches']);
-
-            # Once we have a name the job is done so stopp here
-            return wantarray ? @branches : $branches[0];     
-        }
+        return $commit  if( grep( m/^\d+?\sblob\s$blobid\s(.+?)\s*$/i,
+                                  qx{git ls-tree -r $tree}             ) );
     }
 
-    # If we make it here then the file wasn't found and theres nothing
+    # If we make it here then the file wasn't found and there's nothing
     #   to do about it
-    return wantarray ? ('unknown') : 'unknown';
+    return undef;
 }
+
+
+# Look up the name of the commit
+sub getbranches {
+    my ($commit) = @_;
+    my @branches = map {m%^.*/(.*?)\^\{\}\s*$%; $1;}
+                       qx{git branch --format='%(*refname)' \\
+                                     --points-at $commit      };
+    &DEBUG && warn Data::Dumper->Dump([[@branches]],['branches']);
+    return wantarray ? @branches : $branches[0];
+}
+
+
+# Look up the tags of the commit
+sub gettags {
+    my ($commit) = @_;
+    my @tags = map {$_&&chomp; $_;} qx{git tag --points-at $commit};
+    &DEBUG && warn Data::Dumper->Dump([[@tags]],['tags']);
+    return wantarray ? @tags : $tags[0];
+}
+
 
 # Construct a hash of keywords and their values
 sub getattribs {
     my ($blobid, $filename) = @_;
     
     # Start the hash
-    my %attribs = ( Describe => qx{git describe --all},
-                    Id       => $blobid||'unknown'      );
+    my %attribs = ( Id => $blobid||'unknown' );
 
     # Assemble the 'git log' call and map the results to hash keys
     my $git_log_cmd = sprintf('git log --pretty=format:"%s" -1',
@@ -135,15 +156,24 @@ sub getattribs {
                                        my @logmap = keys( %{&GIT_LOG_MAP} ))));
     @attribs{ @logmap } = split("\n", qx{$git_log_cmd});
 
-    # Set additional keyword values
-    $attribs{'Filename'} = $filename||'unknown';
-    $attribs{'Branch'}   = $blobid ? getcommit($blobid) : 'unknown';
-    $attribs{'Revision'} = sprintf( "%s on branch %s",
-                                    $attribs{'Date'}||'unknown',
-                                    $attribs{'Branch'}||'unknown' );
+    # If we can find a commit for the file then get its data
+    @attribs{ qw( Branch Commit Tags ) } = ('unknown')x3;
+    if(my $commit = getcommit($blobid)){
+        &DEBUG && warn "Commit selected = $commit\n";
+        $attribs{'Commit'} = $commit||'unknown';
+        $attribs{'Branch'} = getbranches($commit)||'unknown';
+        $attribs{'Tags'}   = join(', ', gettags($commit))||'none';
+    }
 
-    # Clean uf the ends of everything in the hash
-    %attribs = map {chomp; $_;} %attribs;
+    # Set additional keyword values
+    @attribs{ qw( RCSfile Source ) } = ($filename)x2;
+    $attribs{'RCSfile'} =~ s%^.*/(.+?)$%$1%;
+    $attribs{'Revision'} = sprintf( "%s on branch %s",
+                                    $attribs{'Date'}  ||'unknown',
+                                    $attribs{'Branch'}||'unknown'  );
+
+    # Clean up the ends of everything in the hash
+    %attribs = map {$_&&chomp; $_;} %attribs;
 
     # Send it back
     &DEBUG && warn  Data::Dumper->Dump([\%attribs],['attribs']);
@@ -166,17 +196,20 @@ $_ = do{local $/; <>;};
 ######################
 ## Apply the regexs to the data
 
+# Load Data::Dumper if DEBUGging
+&DEBUG && eval "use Data::Dumper;";
+
 # Do smudge if asked, otherwise do the clean action
 if(lc($cmd) eq "smudge"){
 
     # Find the file blob's SHA1 Id
-    my ($blobid) = m/\$Id:?\s*(${\(SHA1)})\s*\$/i;
-    warn "'\$Id\$' not found, some keywords will not be filled.\n" .
+    my ($blobid) = m/\$Id:?\s*${\(SHA1)}\s*\$/i;
+    warn "Warning: '\$Id\$' not found, some keywords will not be filled.\n" .
          "Add a '\$Id\$' keyword to enable all keywords.\n"
         unless($blobid);
     
     # Since I frequently used $Source$, change it to $Revision$
-    s/\$Source:?.*?\$/\$Revision\$/gim;
+    #s/\$Source:?.*?\$/\$Revision\$/gim;
 
     # Remove now meaningless keywords
     foreach my $regex ( map { qr(\$$_:?.*?\$) } &OBSOLETE_LIST ){
@@ -184,22 +217,26 @@ if(lc($cmd) eq "smudge"){
         s/$regex\s*?(\b|$)//gim;
     }
 
+    # Do the look-ups for the keyword values
     my $attribs = getattribs($blobid, $filename);
     
     # Fill in new Git filter keywords
-    foreach my $keyword ( keys(%$attribs) ){
-        &DEBUG && warn "s/\$$keyword\$/\$$keyword: $attribs->{$keyword}\$/;\n";
-        s/\$$keyword:?.*?\$/\$$keyword: $attribs->{$keyword}\$/gim;
+    foreach my $keyword ( sort keys(%$attribs) ){
+        s/(\$$keyword(?::.*?)?\s*\$)/\$$keyword: $attribs->{$keyword}\$/gim &&
+            &DEBUG && warn sprintf("%s => \$%s: %s\$\n", $1||'', $keyword,
+                                                     $attribs->{$keyword});
     }
     
 }else{
 
+    # Get the attribute list but there is no $Id$ anyway
+    #   so don't do the extra look-ups
     my $attribs = getattribs(undef, $filename);
 
     # Clear all the keywords
-    foreach my $keyword ( keys(%$attribs) ){
-        &DEBUG && warn "s/\$$keyword:?.*?\$/\$$keyword\$/;\n";
-        s/\$$keyword:?.*?\$/\$$keyword\$/gim;
+    foreach my $keyword ( sort keys(%$attribs) ){
+        s/(\$$keyword(?::.*?)?\s*\$)/\$$keyword\$/gim &&
+            &DEBUG && warn sprintf("%s => \$%s\$\n", $1||'', $keyword);
     }
 }
 
@@ -281,11 +318,13 @@ admin -s---See section admin options.
 
 =item $CommitEmail$
 
-=item $Describe$
-
 =item $Email$
 
 =item $CommitNote$
+
+=item $Commit$
+
+=item $Tags$
 
 =back
 
