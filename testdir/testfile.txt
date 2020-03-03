@@ -3,16 +3,15 @@
 # $Id$
 # $Revision$
 
-# $Describe$
-# $Email$
 # $Author$
-# $CommitNote$
+# $Branch$
+# $Commit$
 # $CommitAuthor$
 # $CommitEmail$
-# $Date$
-# $Branch$
 # $CommitDate$
-
-## This 'Source' should have changed to 'Revision'
+# $CommitNote$
+# $Date$
+# $Email$
+# $RCSfile$
 # $Source$
-
+# $Tags$
