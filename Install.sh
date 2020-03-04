@@ -18,6 +18,12 @@
 # Set what to put in the .git/info/attributes
 : "${ATTRIBUTE_PATTERN:="*   ident filter=keyword"}"
 
+# Value format for the filter.keyword.* config
+: ${CONFIG_FILTER_FMT:="'.git/filters/git-keywords.sh' %s %%f"}
+#: ${CONFIG_FILTER_FMT:="'.git/filters/git-keywords.sh' -d %s %%f"}
+#: ${CONFIG_FILTER_FMT:="'$INSTALL_FILTERS/git-keywords.sh' -d %s %%f"}
+
+
 # Have a nice way out
 function egress () {
   [ $1 -gt 0 ] && exec >&2
@@ -41,12 +47,8 @@ mkdir -p "${INSTALL_FILTERS:="${INSTALL_GIT}/filters"}"
 cp -v ./git-keywords.sh "$INSTALL_FILTERS"/
 
 # Add the filter definitions to the config
-git config filter.keyword.smudge \
-    "'.git/filters/git-keywords.sh' -d smudge %f"
-    #"'$INSTALL_FILTERS/git-keywords.sh' -d smudge %f"
-git config filter.keyword.clean  \
-    "'.git/filters/git-keywords.sh' -d clean  %f"
-    #"'$INSTALL_FILTERS/git-keywords.sh' -d clean  %f"
+git config filter.keyword.smudge "$(printf "$CONFIG_FILTER_FMT" smudge)"
+git config filter.keyword.clean  "$(printf "$CONFIG_FILTER_FMT" clean)"
 
 # Put the activation pattern in its attributes file
 if [ -f "${INSTALL_GITATTRIBUTES:="${INSTALL_GIT}/../.gitattributes"}" ]; then

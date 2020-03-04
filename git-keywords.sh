@@ -17,7 +17,8 @@
 #
 
 # Set some defaults
-: ${GIT_KEYWORD_TMP:="/tmp/git-keyword"}
+scriptname="$(basename "$0")"
+: ${GIT_KEYWORD_TMP:="/tmp/${scriptname%%.*}"}
 : ${GIT_KEYWORD_BEFORE_PIPE:="${GIT_KEYWORD_TMP}.before"}
 : ${GIT_KEYWORD_AFTER_PIPE:="${GIT_KEYWORD_TMP}.after"}
 : ${GIT_KEYWORD_DIFF:="${GIT_KEYWORD_TMP}.diff"}
@@ -50,6 +51,9 @@ if perl -e "use 5.20.0"; then
                                         | tee "$GIT_KEYWORD_AFTER_PIPE"
 else
   # If not perl then just pass-through
+  echo <<"EOS" >&2
+Error: Perl 5.20 or later not found. Continuing in pass-through mode.
+EOS
   cat
 fi
 
@@ -71,7 +75,7 @@ use warnings;
 ## Configuration Constants
 
 # Turn on Debug output and suppress normal output
-use constant DEBUG       => 01;
+use constant DEBUG => 0;
 
 # Map of keywords that corresponds to formatted output from 'git log'
 use constant GIT_LOG_MAP => { Author       => "%an",
@@ -109,11 +113,14 @@ sub getcommit {
                        "\$tree   = $tree\n";
 
         # Search in each tree for the file with $blobid
-        # Once we have a commit the job is done so stop here
-        &DEBUG && warn Data::Dumper->Dump([[ qx{git ls-tree -r $tree} ]],
-                                          ['tree']                        );
-        return $commit  if( grep( m/^\d+?\sblob\s$blobid\s(.+?)\s*$/i,
-                                  qx{git ls-tree -r $tree}             ) );
+        &DEBUG && warn Data::Dumper->Dump( [[ qx{git ls-tree -r $tree} ]],
+                                           ['tree']                        );
+        my $filename;
+        foreach( qx{git ls-tree -r $tree} ){
+            # Once we have a commit the job is done so return it
+            return ($commit, $filename)
+                if( ($filename) = m/^\d+?\sblob\s$blobid\s(.+?)\s*$/i );
+        }
     }
 
     # If we make it here then the file wasn't found and there's nothing
@@ -144,7 +151,7 @@ sub gettags {
 
 # Construct a hash of keywords and their values
 sub getattribs {
-    my ($blobid, $filename) = @_;
+    my ($blobid) = @_;
     
     # Start the hash
     my %attribs = ( Id => $blobid||'unknown' );
@@ -158,15 +165,16 @@ sub getattribs {
 
     # If we can find a commit for the file then get its data
     @attribs{ qw( Branch Commit Tags ) } = ('unknown')x3;
-    if(my $commit = getcommit($blobid)){
-        &DEBUG && warn "Commit selected = $commit\n";
+    if(my ($commit, $tree_filename) = getcommit($blobid)){
+        &DEBUG && warn "Commit selected     = $commit\n",
+                       "File name from tree = $tree_filename\n";
         $attribs{'Commit'} = $commit||'unknown';
         $attribs{'Branch'} = getbranches($commit)||'unknown';
         $attribs{'Tags'}   = join(', ', gettags($commit))||'none';
+        @attribs{ qw( RCSfile Source ) } = ($tree_filename)x2;
     }
 
     # Set additional keyword values
-    @attribs{ qw( RCSfile Source ) } = ($filename)x2;
     $attribs{'RCSfile'} =~ s%^.*/(.+?)$%$1%;
     $attribs{'Revision'} = sprintf( "%s on branch %s",
                                     $attribs{'Date'}  ||'unknown',
@@ -213,7 +221,7 @@ if(lc($cmd) eq "smudge"){
 
     # Remove now meaningless keywords
     foreach my $regex ( map { qr(\$$_:?.*?\$) } &OBSOLETE_LIST ){
-        s/^\#\s*?$regex\s*\n$//gim;
+        s/^\s*\#+\s*?$regex\s*\n$//gim;
         s/$regex\s*?(\b|$)//gim;
     }
 
@@ -231,7 +239,7 @@ if(lc($cmd) eq "smudge"){
 
     # Get the attribute list but there is no $Id$ anyway
     #   so don't do the extra look-ups
-    my $attribs = getattribs(undef, $filename);
+    my $attribs = getattribs(undef);
 
     # Clear all the keywords
     foreach my $keyword ( sort keys(%$attribs) ){
@@ -243,89 +251,3 @@ if(lc($cmd) eq "smudge"){
 # Print the results
 print;
 exit 0;
-
-=pod
-
-=head4 RCS Keywords
-
-This is a list of the keywords that RCS currently (in release 5.6.0.1)
-supports:
-
-=over
-
-=item $Author$
-
-The login name of the user who checked in the revision.
-
-=item $Date$
-    The date and time (UTC) the revision was checked in.
-
-=item $Header$  B<Not Enabled>
-
-A standard header containing the full pathname of the RCS file, the
-revision number, the date (UTC), the author, the state, and the locker
-(if locked). Files will normally never be locked when you use CVS.
-
-=item $Id$
-
-Same as $Header$, except that the RCS filename is without a path.
-
-=item $Locker$  B<Obsolete: Automaticaly Removed>
-
-The login name of the user who locked the revision (empty if not
-locked, and thus almost always useless when you are using CVS).
-
-=item $Log$  B<Not Enabled>
-
-The log message supplied during commit, preceded by a header
-containing the RCS filename, the revision number, the author, and the
-date (UTC). Existing log messages are not replaced. Instead, the new
-log message is inserted after $Log:...$. Each new line is prefixed
-with a comment leader which RCS guesses from the file name
-extension. It can be changed with cvs admin -c. See section admin
-options. This keyword is useful for accumulating a complete change log
-in a source file, but for several reasons it can be problematic. See
-section Problems with the $Log$ keyword..
-
-=item $RCSfile$  B<Obsolete: Automaticaly Removed>
-
-The name of the RCS file without a path.
-
-=item $Revision$
-
-The revision number assigned to the revision.
-
-=item $Source$  B<Obsolete: Automaticaly Removed>
-
-The full pathname of the RCS file.
-
-=item $State$  B<Obsolete: Automaticaly Removed>
-
-The state assigned to the revision. States can be assigned with cvs
-admin -s---See section admin options.
-
-=back
-
-=head4 Additional Keywords
-
-=over
-
-=item $Branch$
-
-=item $CommitAuthor$
-
-=item $CommitDate$
-
-=item $CommitEmail$
-
-=item $Email$
-
-=item $CommitNote$
-
-=item $Commit$
-
-=item $Tags$
-
-=back
-
-=cut
