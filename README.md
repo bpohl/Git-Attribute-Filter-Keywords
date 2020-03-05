@@ -76,7 +76,7 @@ These keywords have lost their meaning under [Git](http://git-scm.com/) and are 
 
 ### Notes on `$Id$`
 
-The keyword `$Id$` is already handled by [Git](http://git-scm.com/) and has special meaning.  It is a SHA1 checksum of the file and used as a unique identifier for the file.  When the file is processed, the `$Id$` is filled in first before the filter is run.  The keyword filter relies on this identifier to look up information about the file.  If a `$Id$` isn't available, the filter will still work but some of the keywords will have a value of 'unknown' and a message will be sent to STDERR warning of the fact.
+The keyword `$Id$` is already handled by [Git](http://git-scm.com/) and has special meaning.  It is a SHA1 checksum of the file and used as a unique identifier for the file.  When the file is processed, the `$Id$` is filled in first before the filter is run.  The keyword filter relies on this identifier to look up information about the file.  If a `$Id$` isn't available, the filter will still work but some of the keywords will have a value of 'N/A' and a message will be sent to STDERR warning of the fact.
 
 To enable the `$Id$` in [Git](http://git-scm.com/), the `ident` attribute has to be set for the file pattern in the attribute settings file.  `Install.sh` sets this by default.
 

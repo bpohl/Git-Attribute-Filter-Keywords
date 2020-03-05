@@ -94,6 +94,9 @@ use constant OBSOLETE_LIST => qw( Locker
 #   Syntax: ${\(SHA1)}
 use constant SHA1 => qr/([[:xdigit:]]{40})/i;
 
+# Not available string
+use constant NA   => "N/A";
+    
 
 ######################
 ## Functions to do additional data look-ups
@@ -108,10 +111,12 @@ sub getcommit {
     foreach( qx{git log --all --pretty=format:'%H %T'} ){
         my ( $commit, $tree ) = ( m/^${\(SHA1)}\s   # commit
                                      ${\(SHA1)}\s   # tree   /x );
-        &DEBUG && warn "\$blobid = $blobid\n" .
-                       "\$commit = $commit\n" .
-                       "\$tree   = $tree\n";
-
+        &DEBUG &&
+            warn sprintf( "\$blobid = %s\n\$commit = %s\n\$tree   = %s\n",
+                          $blobid, $commit||&NA, $tree||&NA                );   
+                            
+        $tree || next; # Without $tree the rest doesn't work
+                       
         # Search in each tree for the file with $blobid
         &DEBUG && warn Data::Dumper->Dump( [[ qx{git ls-tree -r $tree} ]],
                                            ['tree']                        );
@@ -154,7 +159,7 @@ sub getattribs {
     my ($blobid) = @_;
     
     # Start the hash
-    my %attribs = ( Id => $blobid||'unknown' );
+    my %attribs = ( Id => $blobid||&NA );
 
     # Assemble the 'git log' call and map the results to hash keys
     my $git_log_cmd = sprintf('git log --pretty=format:"%s" -1',
@@ -164,12 +169,12 @@ sub getattribs {
     @attribs{ @logmap } = split("\n", qx{$git_log_cmd});
 
     # If we can find a commit for the file then get its data
-    @attribs{ qw( Branch Commit Tags ) } = ('unknown')x3;
-    if(my ($commit, $tree_filename) = getcommit($blobid)){
+    @attribs{ qw( Branch Commit Tags RCSfile Source ) } = (&NA)x5;
+    if((my ($commit, $tree_filename) = getcommit($blobid))[0]){
         &DEBUG && warn "Commit selected     = $commit\n",
                        "File name from tree = $tree_filename\n";
-        $attribs{'Commit'} = $commit||'unknown';
-        $attribs{'Branch'} = getbranches($commit)||'unknown';
+        $attribs{'Commit'} = $commit||&NA;
+        $attribs{'Branch'} = getbranches($commit)||&NA;
         $attribs{'Tags'}   = join(', ', gettags($commit))||'none';
         @attribs{ qw( RCSfile Source ) } = ($tree_filename)x2;
     }
@@ -177,8 +182,8 @@ sub getattribs {
     # Set additional keyword values
     $attribs{'RCSfile'} =~ s%^.*/(.+?)$%$1%;
     $attribs{'Revision'} = sprintf( "%s on branch %s",
-                                    $attribs{'Date'}  ||'unknown',
-                                    $attribs{'Branch'}||'unknown'  );
+                                    $attribs{'Date'}  ||&NA,
+                                    $attribs{'Branch'}||&NA  );
 
     # Clean up the ends of everything in the hash
     %attribs = map {$_&&chomp; $_;} %attribs;
@@ -212,9 +217,9 @@ if(lc($cmd) eq "smudge"){
 
     # Find the file blob's SHA1 Id
     my ($blobid) = m/\$Id:?\s*${\(SHA1)}\s*\$/i;
-    warn "Warning: '\$Id\$' not found, some keywords will not be filled.\n" .
-         "Add a '\$Id\$' keyword to enable all keywords.\n"
-        unless($blobid);
+    warn <<"EOS" unless($blobid);
+Warning: '\$Id\$' not found in '$filename', some keywords may not be filled.
+EOS
     
     # Since I frequently used $Source$, change it to $Revision$
     #s/\$Source:?.*?\$/\$Revision\$/gim;
