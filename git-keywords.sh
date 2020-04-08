@@ -1,6 +1,6 @@
 #!/bin/bash
-# $Id:        Can't use these keywords without messing$
-# $Revision:    up the regexs in the script itself    $
+# $Id$
+# $Revision$
 #
 # Translate keywords from sensible versioning systems using filters.
 #   The bash handles the parallel stream for diff debug output.  The
@@ -24,7 +24,7 @@ scriptname="$(basename "$0")"
 : ${GIT_KEYWORD_DIFF:="${GIT_KEYWORD_TMP}.diff"}
 
 # Check for the right perl
-if perl -e "use 5.20.0"; then
+if perl -e "use 5.18.0"; then
 
   # If given the -d for diff flag then set up for it
   if [ "$1" == "-d" ]; then
@@ -52,7 +52,7 @@ if perl -e "use 5.20.0"; then
 else
   # If not perl then just pass-through
   echo <<"EOS" >&2
-Error: Perl 5.20 or later not found. Continuing in pass-through mode.
+Error: Perl 5.18 or later not found. Continuing in pass-through mode.
 EOS
   cat
 fi
@@ -66,7 +66,7 @@ exit 0
 ## Use perl to do the in-line processing
 ##
 #!/usr/bin/perl
-use 5.20.0;
+use 5.18.0;
 use strict;
 use warnings;
 
@@ -216,13 +216,13 @@ $_ = do{local $/; <>;};
 if(lc($cmd) eq "smudge"){
 
     # Find the file blob's SHA1 Id
-    my ($blobid) = m/\$Id:?\s*${\(SHA1)}\s*\$/i;
+    my ($blobid) = m/\$Id${\(SHA1)}\s*\$/i;
     warn <<"EOS" unless($blobid);
 Warning: '\$Id\$' not found in '$filename', some keywords may not be filled.
 EOS
     
     # Since I frequently used $Source$, change it to $Revision$
-    #s/\$Source:?.*?\$/\$Revision\$/gim;
+    #s/\$Source$/\$Revision\$/gim;
 
     # Remove now meaningless keywords
     foreach my $regex ( map { qr(\$$_:?.*?\$) } &OBSOLETE_LIST ){
