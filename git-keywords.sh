@@ -1,6 +1,6 @@
 #!/bin/bash
-# $Id$
-# $Revision$
+# $Id:        Can't use these keywords without messing$
+# $Revision:    up the regexs in the script itself    $
 #
 # Translate keywords from sensible versioning systems using filters.
 #   The bash handles the parallel stream for diff debug output.  The
@@ -44,6 +44,9 @@ if perl -e "use 5.18.0"; then
     GIT_KEYWORD_BEFORE_PIPE=/dev/null
     GIT_KEYWORD_AFTER_PIPE=/dev/null
   fi
+
+  # Say what is about to happen
+  echo "Keyword $1 for $2 ..." >&2
 
   # Split STDIN to the before diff and the perl processor, and split the
   #   perl STDOUT to the after diff
@@ -189,7 +192,7 @@ sub getattribs {
     %attribs = map {$_&&chomp; $_;} %attribs;
 
     # Send it back
-    &DEBUG && warn  Data::Dumper->Dump([\%attribs],['attribs']);
+    &DEBUG && warn Data::Dumper->Dump([\%attribs],['attribs']);
     return \%attribs
 }
 
@@ -216,13 +219,15 @@ $_ = do{local $/; <>;};
 if(lc($cmd) eq "smudge"){
 
     # Find the file blob's SHA1 Id
-    my ($blobid) = m/\$Id${\(SHA1)}\s*\$/i;
+    my $keyword = "Id";  # Guard against regex being substituted
+    my ($blobid) = m/\$$keyword\:?\s*${\(SHA1)}\s*\$/i;
     warn <<"EOS" unless($blobid);
-Warning: '\$Id\$' not found in '$filename', some keywords may not be filled.
+Warning: '\$$keyword\$' not found in '$filename'.
+         Some keywords may not be filled.
 EOS
     
     # Since I frequently used $Source$, change it to $Revision$
-    #s/\$Source$/\$Revision\$/gim;
+    #s/\$Source\$/\$Revision\$/gim;
 
     # Remove now meaningless keywords
     foreach my $regex ( map { qr(\$$_:?.*?\$) } &OBSOLETE_LIST ){

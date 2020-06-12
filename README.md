@@ -19,6 +19,8 @@ If you don't want to enable the filter by hand you can simply let the `Install.s
         $ ./Git-Attribute-Filter-Keywords/Install.sh ./My-Repository
         './git-keywords.sh' -> './My-Repository/.git/filters/git-keywords.sh'
 
+  `Install.sh` accepts one flag, `-d`, that turns on the [Difference Logging](#Difference Logging) debugging output by adding the `-d` to the config setting.  See [Difference Logging](#Difference Logging) under [Turning on Debug](#Turning on Debug).  `Install.sh` can be rerun with or without `-d` to turn the feature on and off.
+
 * Everything is now in the repository of your project so you can delete [Git-Attribute-Filter-Keywords](http://github.com/bpohl/Git-Attribute-Filter-Keywords) if you wish.
 
 ## Keywords
@@ -86,11 +88,11 @@ Simply said, put a `$Id$` keyword in the file somewhere and it will all work.
 
 If you know some [Perl](http://www.perl.org/) (or can figure some out at least), you can add more keywords.  The script file `git_keywords.sh`, which is installed in `.git/filters` by default, is a hybrid of [Bash Shell](http://www.gnu.org/software/bash/) and [Perl](http://www.perl.org/).  The [Bash](http://www.gnu.org/software/bash/) sets up the input-output and the [Perl](http://www.perl.org/) is there to use its regular expression engine to do the data substitution. 
 
-#### Turning on Debug
+#### Turning on Debug<a name="Turning on Debug"></a>
 
 There are two sets of debugging output.  Neither are turned on by default.
 
-* **Difference Logging** - When on, the filter writes to the file `/tmp/git-keywords.log`  a diff between what is sent into the filter and what comes out.  Doing a `tail -f` of the log is a good way to watch what is going on.
+* <a name="Difference Logging"></a>**Difference Logging** - When on, the filter writes to the file `/tmp/git-keywords.log`  a diff between what is sent into the filter and what comes out.  Doing a `tail -f` of the log is a good way to watch what is going on.
 
   To activate, a `-d` flag needs to be added as the first parameter to `git-keywords.sh` in the config.
   

@@ -1,6 +1,6 @@
 #!/bin/bash -e
-# $Id: 8c3b148d93416c61d4ccdae3c587de9d88c04233$
-# $Revision: Fri Feb 28 21:24:39 2020 -0600 on branch master$
+# $Id$
+# $Revision$
 #
 # The Three Laws of Robotics
 # 1. A robot may not injure a human being or, through inaction, 
@@ -16,15 +16,24 @@
 #   files
 
 # Set what to put in the .git/info/attributes
-: ${ATTRIBUTE_PATTERN_FMT:='%s   ident filter=keyword\n'}
+: ${ATTRIBUTE_PATTERN_FMT:='%-20s   ident  filter=keyword\n'}
+set -f; : ${ATTRIBUTE_PATTERNS_SET:='*'} # Globbing messes this up
+ATTRIBUTE_PATTERNS_SET=( $ATTRIBUTE_PATTERNS_SET )
+
+# Set what to leave out of filtering (When in the Keyword filter dir)
+[ "$INSTALL_WORK_DIR" == "$INSTALL_DIR" ] && \
+  : ${ATTRIBUTE_PATTERN_UNFMT:='%-20s  -ident -filter\n'}
+: ${ATTRIBUTE_PATTERNS_UNSET:='git-keywords.sh 
+                               README.md
+                               testdir/testfile.txt'}
+ATTRIBUTE_PATTERNS_UNSET=( $ATTRIBUTE_PATTERNS_UNSET )
 
 # Value format for the filter.keyword.* config
-: ${CONFIG_FILTER_FMT:="'.git/filters/git-keywords.sh' %s %%f"}
-#: ${CONFIG_FILTER_FMT:="'.git/filters/git-keywords.sh' -d %s %%f"}
-#: ${CONFIG_FILTER_FMT:="'$INSTALL_FILTERS/git-keywords.sh' -d %s %%f"}
+unset dflag && [ "$1" == "-d" ] && dflag='-d' && shift
+: ${CONFIG_FILTER_FMT:="'.git/filters/git-keywords.sh' $dflag %s %%f"}
 
 # Return a full directory path
-function fullpath () { ( cd "${1:-.}" && pwd ) }
+function fullpath () { readlink -e "${1:-.}"; }
 
 # Have a nice way out
 function egress () {
@@ -55,12 +64,12 @@ git config filter.keyword.clean  "$(printf "$CONFIG_FILTER_FMT" clean)"
 touch -a "$INSTALL_GITATTRIBUTES"
 
 # Put the pattern in the attributes file if not already there
-ATTRIBUTE_PATTERNS=('*')
-[ "$INSTALL_WORK_DIR" == "$INSTALL_DIR" ] && \
-  ATTRIBUTE_PATTERNS=('git-keywords.sh' 'README.md' 'testdir/testfile.txt')
-grep -q "filter=keyword" "$INSTALL_GITATTRIBUTES" || \
-        printf "$ATTRIBUTE_PATTERN_FMT" "${ATTRIBUTE_PATTERNS[@]}" \
-                                             >> "$INSTALL_GITATTRIBUTES"
+if ! grep -q "filter=keyword" "$INSTALL_GITATTRIBUTES"; then
+  printf "$ATTRIBUTE_PATTERN_FMT" "${ATTRIBUTE_PATTERNS_SET[@]}" \
+         > "$INSTALL_GITATTRIBUTES"
+   printf "$ATTRIBUTE_PATTERN_UNFMT" "${ATTRIBUTE_PATTERNS_UNSET[@]}" \
+          >> "$INSTALL_GITATTRIBUTES"
+fi
 
 # Put the script in a safe place
 mkdir -p "${INSTALL_FILTERS:="${INSTALL_GIT}/filters"}"
