@@ -1,6 +1,7 @@
 #!/bin/bash -e
 # $Id$
 # $Revision$
+# $Tags$
 #
 # The Three Laws of Robotics
 # 1. A robot may not injure a human being or, through inaction, 
@@ -21,8 +22,7 @@ set -f; : ${ATTRIBUTE_PATTERNS_SET:='*'} # Globbing messes this up
 ATTRIBUTE_PATTERNS_SET=( $ATTRIBUTE_PATTERNS_SET )
 
 # Set what to leave out of filtering (When in the Keyword filter dir)
-[ "$INSTALL_WORK_DIR" == "$INSTALL_DIR" ] && \
-  : ${ATTRIBUTE_PATTERN_UNFMT:='%-20s  -ident -filter\n'}
+: ${ATTRIBUTE_PATTERN_UNFMT:='%-20s  -ident -filter\n'}
 : ${ATTRIBUTE_PATTERNS_UNSET:='git-keywords.sh 
                                README.md
                                testdir/testfile.txt'}
@@ -67,8 +67,9 @@ touch -a "$INSTALL_GITATTRIBUTES"
 if ! grep -q "filter=keyword" "$INSTALL_GITATTRIBUTES"; then
   printf "$ATTRIBUTE_PATTERN_FMT" "${ATTRIBUTE_PATTERNS_SET[@]}" \
          > "$INSTALL_GITATTRIBUTES"
-   printf "$ATTRIBUTE_PATTERN_UNFMT" "${ATTRIBUTE_PATTERNS_UNSET[@]}" \
-          >> "$INSTALL_GITATTRIBUTES"
+  [ "$INSTALL_WORK_DIR" == "$INSTALL_DIR" ] && \
+    printf "$ATTRIBUTE_PATTERN_UNFMT" "${ATTRIBUTE_PATTERNS_UNSET[@]}" \
+           >> "$INSTALL_GITATTRIBUTES"
 fi
 
 # Put the script in a safe place
